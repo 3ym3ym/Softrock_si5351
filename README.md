@@ -6,13 +6,14 @@ the functionality presented to the host are kept the same as the original:
 same VID/PID (`16C0:05DC`, "DG8SAQ-I2C"), same vendor control-transfer
 command set (0x00–0x51), same fixed point formats, same EEPROM layout.
 
-The Si5351A driver (`si5351.c`) implements the quadrature scheme of the
-`si5351_rp2040_cat` Arduino example sketch (no external Si5351 library):
-PLLA + MS0/MS1 as a quadrature I/Q pair on CLK0/CLK1, even
-integer divider 4–126, VCO ≤ 900 MHz, phase registers 165/166, PLLA reset
-after every full retune.
+I am not an embedded developer; the port was heavily assisted by GLM-5.3/Zcode.
 
-### Frequency convention (SoftRock compatible)
+The Si5351A driver (`si5351.c`) implements the frequency control using builtin algorithm by Jerry Gaffke KE7ER (no external Si5351 library):
+PLLA + MS0/MS1 as a quadrature I/Q pair on CLK0/CLK1, even
+integer divider 4–126, VCO ≤ 900 MHz, variable MS0/MS1, phase registers 165/166, PLLA reset
+after divider change only.
+
+### USB command Frequency convention (SoftRock compatible)
 
 SoftRock hosts (hamlib model 25009, PowerSDR, HDSDR, CFGSR, ...) send
 **4x the LO** over the DG8SAQ protocol — the original hardware divided the
@@ -36,15 +37,15 @@ I/Q on chip (phase registers), so this firmware programs CLK0/CLK1 at
 
 | Pin | Function |
 |-----|----------|
-| PA0 | UPDI programming (FTDI serialupdi, `/dev/ttyUSB0`) |
+| PA0 | UPDI programming  |
 | PA1 | user I/O #1 — band filter bit 0 / PTT output (cmd 0x50) |
 | PA2 | user I/O #2 — band filter bit 1 |
 | PA3 | CW key 1 input (0x51 bit 0x08) |
 | PA4 | CW key 2 input (0x51 bit 0x10) |
 | PB0 | I2C SCL → Si5351A (TWI0, fixed pin route, 200 kHz) |
 | PB1 | I2C SDA → Si5351A (TWI0, fixed pin route) |
-| PB2 | USB D+ (3.6 V zener to bus) |
-| PB3 | USB D− (3.6 V zener, 1.5 k pull-up to Vcc; pin interrupt) |
+| PB2 | USB D+ (via 68Ohm resistor and 3.6 V zener to GMD, see the Softrock Enasemble RX II schematic) |
+| PB3 | USB D− (same schematic note, there is also a 1.5k resistor to VBUS) |
 
 Clock: internal 16 MHz oscillator (OSCCFG fuse 0x7D).  USB: V-USB 16 MHz
 assembler core (`usbdrv/usbdrvasm16.inc`) via the VPORTB fast I/O aliases.
@@ -66,6 +67,7 @@ ATtiny1624 support is required (avr-gcc ≥ 9 / avr-libc ≥ 2.0) — the tools
 ```
 make -C src TOOLCHAIN_DIR=/opt/avr-gcc/bin
 ```
+I downloaded the toolchain from `https://github.com/modm-io/avr-gcc/releases`
 
 Output: `src/si5351avr.hex` / `src/si5351avr.eep`.
 
@@ -110,10 +112,6 @@ math retained to maintain a **virtual Si570 register image**:
   affects the divider choice of the virtual register image.
 * **0x33/0x3D** (xtal) — now the *Si5351 reference crystal* (8.24),
   clamped to 1–33.5 MHz (32-bit driver math limit).
-
-Smooth tuning (0x35/0x3B, default 3500 ppm) is preserved: within the PPM
-window only the output multisynth ratio MS0/MS1 is rewritten in
-fractional mode — the PLL is not reset, so the retune is glitch free.
 
 ### Documented deviations
 
